@@ -7,18 +7,21 @@ import numpy as np
 
 def kalasfunktion():
     print('MESTast KALAS!')
-    
-def create_data_batches(X, labels, batch_size, replace = False):
+
+
+def create_data_batches(self, X, targets, batch_size, shuffle = True):
     mini_batches = []
-    data = np.c_[X, labels]
-    n_batches = data.shape[0] // batch_size
-    np.random.shuffle(data)
-    for i in range(n_batches + 1):
+    data = np.c_[X, targets]
+    self.n_batches = data.shape[0] // batch_size
+    if shuffle == True:
+        np.random.shuffle(data)
+    for i in range(self.n_batches + 1):
         mini_batch = data[i*batch_size:(i+1)*batch_size,:]
         mini_batches.append(mini_batch)
     return mini_batches
-
-def stochastic_gradient_descent(network, data_points, targets, train_rate):
+    
+    
+def stochastic_gradient_descent(network, data_points, targets, train_rate, epsilon = 0):
     n_train = targets.shape[0]
     random_pattern = np.random.randint(n_train)
     x = data_points[random_pattern,:]
@@ -27,16 +30,16 @@ def stochastic_gradient_descent(network, data_points, targets, train_rate):
     network.backpropagation(t)
     
     for i in range(network.network_depth):
-        network.layers[i].stochastic_gradient_descent(train_rate, network.error[i], network.v[i])
+        network.layers[i].stochastic_gradient_descent(train_rate, network.error[i], network.v[i], True, epsilon)
             
 
-def mini_batch_gradient_descent(network, data_batches, train_rate):
+def mini_batch_gradient_descent(network, data_batches, train_rate, epsilon = 0):
     
     n_batches = len(data_batches)
     n_layers = len(network.layers)
     for i_batch in range(n_batches):
-        x = data_batches[i_batch][:, 0:-1]
-        t = data_batches[i_batch][:, -1]
+        x = data_batches[i_batch][:, :-network.n_outputs]
+        t = data_batches[i_batch][:, -network.n_outputs:]
         batch_size = t.shape[0]
         delta_w = [np.zeros(network.layers[i].weights.shape) for i in range(network.network_depth)]
         delta_t = [np.zeros(network.layers[i].thresholds.shape) for i in range(network.network_depth)]
@@ -50,54 +53,16 @@ def mini_batch_gradient_descent(network, data_batches, train_rate):
             
             for i_layer in range(network.network_depth):
                 [dw, dt] = network.layers[i_layer].stochastic_gradient_descent(train_rate, network.error[i_layer],\
-                                                                               network.v[i_layer], False)
-                delta_w[i_layer] += dw
-                delta_t[i_layer] += dt
+                                                                               network.v[i_layer], False, epsilon)
+                delta_w[i_layer] += dw 
+                delta_t[i_layer] += dt 
                 
         for i_layer in range(network.network_depth):
-            network.layers[i_layer].weights += delta_w[i_layer]
-            network.layers[i_layer].thresholds += delta_t[i_layer]
+            network.layers[i_layer].weights += delta_w[i_layer] #- epsilon*network.layers[i_layer].weights
+            network.layers[i_layer].thresholds += delta_t[i_layer] #- epsilon*network.layers[i_layer].thresholds
             
-            
-# This one is wrong but fast, the above one is slow but correct. I think there is only some little thing that is incorrect
-def mini_batch_gradient_descent_wrong(network, data_batches, train_rate):
-    
-    n_batches = len(data_batches)
-    n_layers = len(network.layers)
-    for i_batch in range(n_batches):
-        delta_w = [np.zeros(network.layers[i].weights.shape) for i in range(network.network_depth)]
-        delta_t = [np.zeros(network.layers[i].thresholds.shape) for i in range(network.network_depth)]
-        x = data_batches[i_batch][:, 0:-1]
-        t = data_batches[i_batch][:, -1]
-        batch_size = t.shape[0]
-
-        
-        # Feed forward through the network
-        v = [network.feed_forward(x[i,:]) for i in range(batch_size)]
-        
-        # Backpropagate
-        error = [network.backpropagation(t[i]) for i in range(batch_size)]
-        
-        # Update weights    
-        for i_data in range(batch_size):
-            for i_layer in range(n_layers):
-                network.layers[i_layer].stochastic_gradient_descent(train_rate, error[i_data][i_layer], \
-                                                                               v[i_data][i_layer])
-
-# I think both of these code blocks do the same thing, but neither is correct
-#        # Update weights    
-#        for i_data in range(batch_size):
-#            for i_layer in range(n_layers):
-#                [dw, dt] = network.layers[i_layer].stochastic_gradient_descent(train_rate, error[i_data][i_layer], \
-#                                                                               v[i_data][i_layer], False)
-#                delta_w[i_layer] += dw
-#                delta_t[i_layer] += dt
-#        
-#        print(delta_w)
-#        for i_layer in range(network.network_depth):
-#            network.layers[i_layer].weights += delta_w[i_layer]
-#            network.layers[i_layer].thresholds += delta_t[i_layer]
                 
+
 
 ############################################################
 ### Layer classes
@@ -109,7 +74,7 @@ class FeedForwardLayer:
         self.weights =  np.random.normal(0, 1/np.sqrt(n_input), (layer_size,n_input))
         self.thresholds = np.zeros((layer_size,))
         self.activation_function = activation_function;
-        self.layer_dimensions = (n_input, layer_size)
+        self.shape = (n_input, layer_size)
         
     def set_weights(self, w):
         if np.shape(w) == np.shape(self.weights):
@@ -158,6 +123,9 @@ class FeedForwardLayer:
         if self.activation_function == '':
             print('Error: Layer output has not yet been computed. Cannot backpropagate. Try running FeedForwardLayer.feed_forward first.')
             return None
+        elif self.activation_function.lower() == 'softmax':
+            print('Softmax can only be used for output')
+            return None
         else:
             self.propagation_error = np.dot(next_layer_error, next_layer_weights) * self.dg
             return self.propagation_error
@@ -167,12 +135,12 @@ class FeedForwardLayer:
     ### Optimization Algorithms ###
     ###############################
     
-    def stochastic_gradient_descent(self, train_rate, prop_error, layer_input, update = True):
+    def stochastic_gradient_descent(self, train_rate, prop_error, layer_input, update = True, epsilon = 0):
         dw = train_rate * np.outer(prop_error, layer_input)
         dt = - train_rate * prop_error
         if update == True:
-            self.weights += dw
-            self.thresholds += dt
+            self.weights += dw #- epsilon*np.sign(self.weights)
+            self.thresholds += dt #- epsilon*np.sign(self.thresholds)
         else:
             return dw, dt
             
@@ -233,18 +201,8 @@ class FeedForwardLayer:
     ### Information Retrieval ###
     #############################
     
-    def get_weights(self):
-        return self.weights
-    
-    def get_thresholds(self):
-        return self.thresholds
-    
-    def shape(self):
-        return self.layer_dimensions
-    
     def type(self):
         return 'Fully Connected Layer'
-    
     
     
 ##########################################
@@ -256,11 +214,13 @@ class NeuralNetwork:
     def __init__(self, layer_list):
         self.layers = layer_list
         self.network_depth = len(layer_list)
-        self.v = [np.zeros((self.layers[0].shape()[0]))]
+        self.n_inputs = layer_list[0].shape[0]
+        self.n_outputs = layer_list[-1].shape[1]
+        self.v = [np.zeros((self.layers[0].shape[0]))]
         self.error = []
         for i in range(self.network_depth):
-            self.v.append(np.zeros((self.layers[i].shape()[1])))
-            self.error.append(np.zeros((self.layers[i].shape()[1])))
+            self.v.append(np.zeros((self.layers[i].shape[1])))
+            self.error.append(np.zeros((self.layers[i].shape[1])))
         
     
     def output(self, data):
@@ -278,6 +238,5 @@ class NeuralNetwork:
     def backpropagation(self, train_label):
         self.error[-1] = self.layers[-1].output_error(train_label) 
         for i in reversed(range(self.network_depth - 1)):    
-            self.error[i] = self.layers[i].backpropagation(self.error[i+1], self.layers[i+1].get_weights())
+            self.error[i] = self.layers[i].backpropagation(self.error[i+1], self.layers[i+1].weights)
         return self.error
-        
