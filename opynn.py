@@ -209,9 +209,9 @@ class FullyConnectedLayer:
             return self.propagation_error
 
 
-    ###############################
-    ### Optimization Algorithms ###
-    ###############################
+
+    ### Optimization Algorithms
+
 
     def stochastic_gradient_descent(self, train_rate, prop_error, layer_input, update = True, regularization = 0.0):
         """Computes the weight updates for the layer
@@ -237,10 +237,8 @@ class FullyConnectedLayer:
             return dw, dt
 
 
+    ### Activation functions
 
-    ############################
-    ### Activation functions ###
-    ############################
 
     def linear(self):
         # Returns layer output without activation function
@@ -289,12 +287,30 @@ class FullyConnectedLayer:
         return self.output
 
 
-    #############################
-    ### Information Retrieval ###
-    #############################
+
+    ### Information Retrieval
+
 
     def type(self):
         return 'Fully Connected Layer'
+
+
+class ConvolutionalLayer:
+
+    def __init__(self, input_dimension, kernel_size, channels, stride = 1, padding = 0):
+        self.input_dimension = input_dimension
+
+
+    def feed_forward(self):
+        raise NotImplementedError
+
+
+    def backpropagate(self):
+        raise NotImplementedError
+
+
+    def stochastic_gradient_descent(self):
+        raise NotImplementedError
 
 
 ##########################################
