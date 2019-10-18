@@ -33,7 +33,6 @@ def create_data_batches(X, labels, batch_size, shuffle = True):
         mini_batches.append(mini_batch)
     return mini_batches
 
-
 def stochastic_gradient_descent(network, data_points, targets, train_rate, regularization = 0.0):
     """Runs stochastic gradient descent on a single, random data point without having to create batches
 
@@ -95,7 +94,43 @@ def mini_batch_gradient_descent(network, data_batches, train_rate, regularizatio
             network.layers[i_layer].weights += delta_w[i_layer] - regularization*network.layers[i_layer].weights
             network.layers[i_layer].thresholds += delta_t[i_layer] - regularization*network.layers[i_layer].thresholds
 
+def image_to_conv(image_data, kernel_size, stride, padding):
+    """Changes images of shape (m, n) or (c, m, n) into a format that can be used for the convolution
 
+    Arguments:
+        image_data {numpy.array} -- Numpy array of shape (m, n) or (c, m, n) to reshape
+        kernel_size {integer} -- Side length of convolution filter
+        stride {integer} -- Stride of the convolution
+        padding {integer} -- Indicates the width of a padding layer of zeros around the image
+
+    Returns:
+        [numpy.array] -- Image changed to be easily convolved
+    """
+    image_data = np.pad(image_data, pad_width = padding, mode = 'constant', constant_values = 0)
+    input_shape = image_data.shape
+    output_dimension = np.array([input_shape[-1] - (kernel_size//2 + 1),
+                            input_shape[-2] - (kernel_size//2 + 1)])
+    n_rows = np.prod(output_dimension - stride + 1)
+
+    # Turns (n, m) images into (c, n_rows, kernel_size**2) arrays
+    if len(image_data.shape) == 2:
+        flat_image = np.array([image_data[stride*i:stride*i + kernel_size, stride*j:stride*j + kernel_size]\
+                        for i in range(output_dimension[0] - stride + 1)\
+                        for j in range(output_dimension[1] - stride + 1)]).\
+                        reshape(n_rows,kernel_size**2)
+    # Turns (c, n, m) images into (c, n_rows, kernel_size**2) arrays
+    elif len(image_data.shape) == 3:
+        image_data = image_data[padding:input_shape[0] - padding, :, :]
+        flat_image = np.zeros((n_rows*image_data.shape[0], kernel_size**2))
+        for i_channel in range(image_data.shape[0]):
+            flat_image[i_channel*n_rows:i_channel*n_rows + n_rows,:] = np.array([image_data[i_channel, stride*i:stride*i + kernel_size, stride*j:stride*j + kernel_size]\
+                            for i in range(output_dimension[0] - stride + 1)\
+                            for j in range(output_dimension[1] - stride + 1)]).\
+                            reshape(np.prod(output_dimension - stride + 1),kernel_size**2)
+    else:
+        print('Cannot handle this image, too many dimensions')
+        print('Input data shape', image_data.shape, 'Image should have 2 or three dimensions')
+    return flat_image
 
 
 ############################################################
@@ -297,12 +332,59 @@ class FullyConnectedLayer:
 
 class ConvolutionalLayer:
 
-    def __init__(self, input_dimension, kernel_size, channels, stride = 1, padding = 0):
+    def __init__(self, input_dimension, kernel_size, n_filters, stride = 1, padding = 0):
+        """Convolutional layer suited for image analysis
+
+        Arguments:
+            input_dimension {tuple(integers)} -- Shape of input image (channels, width, height)
+            kernel_size {integer} -- Side length of convolution filter
+            n_filters {integer} -- Number of filters
+
+        Keyword Arguments:
+            stride {int} -- Step size of the filters when colvolving (default: {1})
+            padding {int} -- Adds a border of zeros with indicated width (default: {0})
+        """
         self.input_dimension = input_dimension
+        self.kernel_size = kernel_size
+        self.n_filters = n_filters
+        self.stride = stride
+        self.padding = padding
+        self.output_dimension = (input_dimension[-2] - (kernel_size//2 + 1) + 2*padding,
+                                 input_dimension[-1] - (kernel_size//2 + 1) + 2*padding)
 
+        #  Initialize weigths
+        self.weights =  np.random.normal(0, 1/np.sqrt(np.prod(input_dimension)), (n_filters, kernel_size, kernel_size))
+        self.thresholds = np.zeros(n_filters)
 
-    def feed_forward(self):
-        raise NotImplementedError
+    def feed_forward(self, input_data):
+        """Feed through the convolutional layer given an input to the layer
+
+        Arguments:
+            input_data {numpy.array} -- Input data of the shape that has been specified to the layer when initialized
+
+        Raises:
+            Exception: If the input dimension differs from the specified input. Note that if the image is single layered it works to use images of shape (m, n) as well as (1, m, n)
+
+        Returns:
+            [numpy.array] -- Array of images with shape (c*n_layer, m, n) where n_layer is defined when creating layer object
+        """
+        
+        if input_data.shape != self.input_dimension and input_data.shape != self.input_dimension[1:]:
+            print('Input dimension', input_data.shape, 'is different from the expected dimension', self.input_dimension)
+            raise Exception('Invalid input dimension')
+
+        input_conv = image_to_conv(input_data, self.kernel_size, self.stride, self.padding)
+        w_conv = self.weights.reshape(self.kernel_size**2, -1)
+
+        output = input_conv @ w_conv - self.thresholds
+        print(output)
+        if len(input_data.shape) == 2:
+            output = output.T.reshape(self.output_dimension)
+        elif len(input_data.shape) == 3:
+            output = output.T.reshape((self.n_filters*self.input_dimension[0],) + self.output_dimension)
+
+        self.output = output
+        return(output)
 
 
     def backpropagate(self):
