@@ -134,6 +134,54 @@ def image_to_conv(image_data, kernel_size, stride, padding):
     return flat_image
 
 
+### Activation functions
+
+def linear(layer):
+    # Returns layer output without activation function
+    layer.activation_function = 'linear'
+    layer.dg = np.ones(np.size(layer.thresholds))
+    layer.output = layer.b
+    return layer.output
+
+def relu(layer):
+    # Rectified linear unit function
+    layer.activation_function = 'relu'
+    layer.output = np.maximum(0,layer.b)
+    layer.dg = np.sign(layer.output)
+    return layer.output
+
+def heaviside(layer):
+    # Heavyside step function
+    layer.activation_function = 'heaviside'
+    layer.output = np.heaviside(layer.b,0)
+    layer.dg = np.zeros(np.size(layer.thresholds))
+    return layer.output
+
+def signum(layer):
+    layer.activation_function = 'signum'
+    layer.output = np.sign(layer.b)
+    layer.dg = np.zeros(np.size(layer.thresholds))
+    return layer.output
+
+def sigmoid(layer):
+    layer.activation_function = 'sigmoid'
+    layer.output = 1 / (1 + np.exp(-layer.b))
+    layer.dg = np.exp(-layer.b)/(1 + np.exp(-layer.b))**2
+    return layer.output
+
+def tanh(layer):
+    layer.activation_function = 'tanh'
+    layer.output = np.tanh(layer.b)
+    layer.dg = 1 - layer.output**2
+    return layer.output
+
+def softmax(layer, alpha = 1):
+    layer.activation_function = 'softmax'
+    layer.output = np.exp(alpha*layer.b)/np.sum(np.exp(alpha*layer.b))
+    layer.dg = 1
+    return layer.output
+
+
 ############################################################
 ### Layer classes
 ############################################################
@@ -154,6 +202,7 @@ class FullyConnectedLayer:
         self.thresholds = np.zeros((layer_size,))
         self.activation_function = activation_function
         self.shape = (n_input, layer_size)
+        self.dg = 1
 
     def set_weights(self, w):
         """ Manually set the weights of the network
@@ -191,21 +240,24 @@ class FullyConnectedLayer:
 
         # Select activation function
         if self.activation_function.lower() == 'linear':
-            return self.linear()
+            self.output = linear(self)
         elif self.activation_function.lower() == 'relu':
-            return self.relu()
+            self.output = relu(self)
         elif self.activation_function.lower() == 'heaviside':
-            return self.heaviside()
+            self.output = heaviside(self)
         elif self.activation_function.lower() == 'signum':
-            return self.signum()
+            self.output = signum(self)
         elif self.activation_function.lower() == 'sigmoid':
-            return self.sigmoid()
+            self.output = sigmoid(self)
         elif self.activation_function.lower() == 'tanh':
-            return self.tanh()
+            self.output = tanh(self)
         elif self.activation_function.lower() == 'softmax':
-            return self.softmax()
+            self.output = softmax(self)
         else:
             print(self.activation_function, 'is not an avalible activation function')
+            print('Availible activation functions: linear, relu, heaviside, signum, sigmoid, tanh, softmax.')
+
+        return self.output
 
 
     def output_error(self, train_label):
@@ -248,7 +300,6 @@ class FullyConnectedLayer:
 
     ### Optimization Algorithms
 
-
     def stochastic_gradient_descent(self, train_rate, prop_error, layer_input, update = True, regularization = 0.0):
         """Computes the weight updates for the layer
 
@@ -272,60 +323,7 @@ class FullyConnectedLayer:
         else:
             return dw, dt
 
-
-    ### Activation functions
-
-
-    def linear(self):
-        # Returns layer output without activation function
-        self.activation_function = 'linear'
-        self.dg = np.ones(np.size(self.thresholds))
-        self.output = self.b
-        return self.output
-
-    def relu(self):
-        # Rectified linear unit function
-        self.activation_function = 'relu'
-        self.output = np.maximum(0,self.b)
-        self.dg = np.sign(self.output)
-        return self.output
-
-    def heaviside(self):
-        # Heavyside step function
-        self.activation_function = 'heaviside'
-        self.output = np.heaviside(self.b,0)
-        self.dg = np.zeros(np.size(self.thresholds))
-        return self.output
-
-    def signum(self):
-        self.activation_function = 'signum'
-        self.output = np.sign(self.b)
-        self.dg = np.zeros(np.size(self.thresholds))
-        return self.output
-
-    def sigmoid(self):
-        self.activation_function = 'sigmoid'
-        self.output = 1 / (1 + np.exp(-self.b))
-        self.dg = np.exp(-self.b)/(1 + np.exp(-self.b))**2
-        return self.output
-
-    def tanh(self):
-        self.activation_function = 'tanh'
-        self.output = np.tanh(self.b)
-        self.dg = 1 - self.output**2
-        return self.output
-
-    # Not tested yet
-    def softmax(self, alpha = 1):
-        self.activation_function = 'softmax'
-        self.output = np.exp(alpha*self.b)/np.sum(np.exp(alpha*self.b))
-        self.dg = 1
-        return self.output
-
-
-
     ### Information Retrieval
-
 
     def type(self):
         return 'Fully Connected Layer'
@@ -333,29 +331,35 @@ class FullyConnectedLayer:
 
 class ConvolutionalLayer:
 
-    def __init__(self, input_dimension, kernel_size, n_filters, stride = 1, padding = 0):
+    def __init__(self, input_dimension, kernel_size, n_filter, activation_function = 'linear', stride = 1, padding = 0):
         """Convolutional layer suited for image analysis
 
         Arguments:
             input_dimension {tuple(integers)} -- Shape of input image (channels, width, height)
             kernel_size {integer} -- Side length of convolution filter
-            n_filters {integer} -- Number of filters
+            n_filter {integer} -- Number of filters
 
         Keyword Arguments:
+            activation_function {string} -- Activation function to apply for the forward propagation (default: {'linear'})
             stride {int} -- Step size of the filters when colvolving (default: {1})
             padding {int} -- Adds a border of zeros with indicated width (default: {0})
         """
         self.input_dimension = input_dimension
         self.kernel_size = kernel_size
-        self.n_filters = n_filters
+        self.n_filter = n_filter
         self.stride = stride
         self.padding = padding
+        self.activation_function = activation_function
+        self.output = None
+        self.dg = 0
         self.output_dimension = (input_dimension[-2] + 2*padding - kernel_size//2 - stride,
                                  input_dimension[-1] + 2*padding - kernel_size//2 - stride)
 
         #  Initialize weigths
-        self.weights =  np.random.normal(0, 1/np.sqrt(np.prod(input_dimension)), (n_filters, kernel_size, kernel_size))
-        self.thresholds = np.zeros(n_filters)
+        self.weights =  np.ones((n_filter, kernel_size, kernel_size))#np.random.normal(0, 1/np.sqrt(np.prod(input_dimension)), (n_filter, kernel_size, kernel_size))
+        self.weights[1,:,:] = np.ones((kernel_size, kernel_size))*10
+        #self.weights[2,:,:] = np.ones((kernel_size, kernel_size))*100
+        self.thresholds = np.zeros((n_filter, 1))
 
     def feed_forward(self, input_data):
         """Feed through the convolutional layer given an input to the layer
@@ -373,27 +377,69 @@ class ConvolutionalLayer:
             print('Input dimension', input_data.shape, 'is different from the expected dimension', self.input_dimension)
             raise Exception('Invalid input dimension')
 
-        input_conv = image_to_conv(input_data, self.kernel_size, self.stride, self.padding)
-        w_conv = self.weights.reshape(self.kernel_size**2, -1)
+        # Reshape the image and the filters so that the convolution
+        # can be performed by a single matrix multiplication operation
+        self.input_conv = image_to_conv(input_data, self.kernel_size, self.stride, self.padding)
+        w_conv = self.weights.reshape(self.n_filter, -1)
 
-        output = input_conv @ w_conv - self.thresholds
+        self.b =  w_conv @ self.input_conv.T - self.thresholds
 
-        if len(input_data.shape) == 2:
-            output = output.T.reshape((self.n_filters,) + self.output_dimension)
-        elif len(input_data.shape) == 3:
-            output = output.T.reshape((self.n_filters*self.input_dimension[0],) + self.output_dimension)
+        # Reshape the output back into a set of images
+        self.b = self.b.reshape((self.n_filter*self.input_dimension[0],) + self.output_dimension)
 
-        self.output = output
-        return(output)
+        # Apply activation function
+        if self.activation_function.lower() == 'linear':
+            self.output = linear(self)
+        elif self.activation_function.lower() == 'relu':
+            self.output = relu(self)
+        elif self.activation_function.lower() == 'heaviside':
+            self.output = heaviside(self)
+        elif self.activation_function.lower() == 'signum':
+            self.output = signum(self)
+        elif self.activation_function.lower() == 'sigmoid':
+            self.output = sigmoid(self)
+        elif self.activation_function.lower() == 'tanh':
+            self.output = tanh(self)
+        elif self.activation_function.lower() == 'softmax':
+            self.output = softmax(self)
+        else:
+            print(self.activation_function, 'is not an avalible activation function')
+            print('Availible activation functions: linear, relu, heaviside, signum, sigmoid, tanh, softmax.')
+        return self.output
 
 
-    def backpropagate(self):
-        raise NotImplementedError
+    def backpropagate(self, dout):
+        if self.output.all() == None:
+            print('Error: Output not computed. Run ConvolutionalLayer.feed_forward first.')
+            raise Exception('Output not computed')
+
+        self.dout = dout.reshape((self.n_filter,self.input_dimension[0]) + self.output_dimension)
+        dout_reshaped = self.dout.transpose(0,2,3,1).reshape(self.n_filter, -1)
+        w_conv = self.weights.reshape(self.n_filter, -1)
 
 
-    def stochastic_gradient_descent(self):
-        raise NotImplementedError
+        error = w_conv.T @ dout_reshaped
+        print(error)
+        error = np.array([])
+        error.reshape((self.input_dimension[0],) + self.output_dimension)
+        return error
 
+    def stochastic_gradient_descent(self, train_rate, update = True):
+        # Threshold update
+        dt = - np.sum(self.dout, axis=(1,2,3))
+        dt = dt.reshape(self.n_filter, -1)
+
+        # Weight update
+        dout_reshaped = self.dout.transpose(0,2,3,1).reshape(self.n_filter, -1)
+        dw = dout_reshaped @ self.input_conv
+        dw = dw.reshape(self.weights.shape)
+
+        # Update
+        if update == True:
+            self.weights += train_rate*dw
+
+    def type(self):
+        return 'convolutional layer'
 
 ##########################################
 ### Network class
