@@ -108,15 +108,15 @@ def image_to_conv(image_data, kernel_size, stride, padding):
     """
     image_data = np.pad(image_data, pad_width = padding, mode = 'constant', constant_values = 0)
     input_shape = image_data.shape
-    output_dimension = np.array([input_shape[-1] - (kernel_size//2 + 1),
-                            input_shape[-2] - (kernel_size//2 + 1)])
-    n_rows = np.prod(output_dimension - stride + 1)
+    output_dimension = np.array([input_shape[-1] - kernel_size//2 - stride,
+                            input_shape[-2] - kernel_size//2 - stride])
+    n_rows = np.prod(output_dimension)
 
     # Turns (n, m) images into (c, n_rows, kernel_size**2) arrays
     if len(image_data.shape) == 2:
         flat_image = np.array([image_data[stride*i:stride*i + kernel_size, stride*j:stride*j + kernel_size]\
-                        for i in range(output_dimension[0] - stride + 1)\
-                        for j in range(output_dimension[1] - stride + 1)]).\
+                        for i in range(output_dimension[0])\
+                        for j in range(output_dimension[1])]).\
                         reshape(n_rows,kernel_size**2)
     # Turns (c, n, m) images into (c, n_rows, kernel_size**2) arrays
     elif len(image_data.shape) == 3:
@@ -124,12 +124,13 @@ def image_to_conv(image_data, kernel_size, stride, padding):
         flat_image = np.zeros((n_rows*image_data.shape[0], kernel_size**2))
         for i_channel in range(image_data.shape[0]):
             flat_image[i_channel*n_rows:i_channel*n_rows + n_rows,:] = np.array([image_data[i_channel, stride*i:stride*i + kernel_size, stride*j:stride*j + kernel_size]\
-                            for i in range(output_dimension[0] - stride + 1)\
-                            for j in range(output_dimension[1] - stride + 1)]).\
-                            reshape(np.prod(output_dimension - stride + 1),kernel_size**2)
+                            for i in range(output_dimension[0])\
+                            for j in range(output_dimension[1])]).\
+                            reshape(n_rows,kernel_size**2)
     else:
         print('Cannot handle this image, too many dimensions')
         print('Input data shape', image_data.shape, 'Image should have 2 or three dimensions')
+        raise Exception('Invalid image dimension')
     return flat_image
 
 
@@ -349,8 +350,8 @@ class ConvolutionalLayer:
         self.n_filters = n_filters
         self.stride = stride
         self.padding = padding
-        self.output_dimension = (input_dimension[-2] - (kernel_size//2 + 1) + 2*padding,
-                                 input_dimension[-1] - (kernel_size//2 + 1) + 2*padding)
+        self.output_dimension = (input_dimension[-2] + 2*padding - kernel_size//2 - stride,
+                                 input_dimension[-1] + 2*padding - kernel_size//2 - stride)
 
         #  Initialize weigths
         self.weights =  np.random.normal(0, 1/np.sqrt(np.prod(input_dimension)), (n_filters, kernel_size, kernel_size))
@@ -368,7 +369,6 @@ class ConvolutionalLayer:
         Returns:
             [numpy.array] -- Array of images with shape (c*n_layer, m, n) where n_layer is defined when creating layer object
         """
-        
         if input_data.shape != self.input_dimension and input_data.shape != self.input_dimension[1:]:
             print('Input dimension', input_data.shape, 'is different from the expected dimension', self.input_dimension)
             raise Exception('Invalid input dimension')
@@ -377,9 +377,9 @@ class ConvolutionalLayer:
         w_conv = self.weights.reshape(self.kernel_size**2, -1)
 
         output = input_conv @ w_conv - self.thresholds
-        print(output)
+
         if len(input_data.shape) == 2:
-            output = output.T.reshape(self.output_dimension)
+            output = output.T.reshape((self.n_filters,) + self.output_dimension)
         elif len(input_data.shape) == 3:
             output = output.T.reshape((self.n_filters*self.input_dimension[0],) + self.output_dimension)
 
