@@ -5,10 +5,6 @@ import numpy as np
 ######################################
 
 
-def kalasfunktion():
-    print('MESTast KALAS!')
-
-
 def create_data_batches(X, labels, batch_size, shuffle = True):
     """Creates data batches
 
